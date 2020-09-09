@@ -1,0 +1,67 @@
+version: '3'
+
+services:
+  django_app:
+    restart: always
+    build: .
+    working_dir: /usr/src/app
+    volumes:
+      - ./src:/usr/src/app
+      - static_volume:/usr/src/app/setting/static  
+    command: /usr/local/bin/gunicorn setting.wsgi:application -w 2 -b :8000
+    networks:
+      - app-network
+    links:
+      - db:db
+    env_file:
+      - app.env
+    environment:
+      - DEBUG=1
+      - DJANGO_LOG_LEVEL=info
+      - PYTHONUNBUFFERED=1  
+        
+    depends_on:  # <-- wait for djangoapp to be "ready" before starting this service
+      - db
+
+  nginx:
+    restart: always
+    image: nginx:latest
+    ports:
+      - 8080:80
+    volumes:
+      - ./config/nginx/conf.d:/etc/nginx/conf.d
+      - static_volume:/usr/src/app/setting/static
+    depends_on:  # <-- wait for djangoapp to be "ready" before starting this service
+      - django_app
+    networks:
+      - app-network
+
+  redis:
+    image: library/redis:5.0-alpine
+    restart: unless-stopped
+    depends_on:  # <-- wait for djangoapp to be "ready" before starting this service
+      - django_app
+    networks:
+      - app-network
+    volumes:
+      - rdsdata:/data
+  
+  db:
+    image: postgres:12.0-alpine
+    volumes:
+      - pgdata:/var/lib/postgresql/data/
+    env_file:
+      - ./env.prod.db 
+    networks:
+      - app-network
+
+volumes:
+  pgdata:
+  rdsdata:
+  static_volume:        
+
+
+networks:
+  app-network:
+    driver: bridge
+
